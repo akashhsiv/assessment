@@ -1,12 +1,10 @@
-import 'package:fl_chart/fl_chart.dart';
+import 'package:crypto_research/features/market/widgets/pie_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/mock_data_notice.dart';
 import '../../../core/widgets/theme_toggle_button.dart';
 import '../models/coin_model.dart';
-import '../models/price_history_model.dart';
 import '../viewmodels/coin_details_viewmodel.dart';
 import '../viewmodels/market_viewmodel.dart';
 import '../widgets/price_change_indicator.dart';
@@ -114,15 +112,15 @@ class CoinDetailsScreen extends ConsumerWidget {
                             else if (chartData.isEmpty)
                               const SizedBox(
                                   height: 190,
-                                  child:  Center(
-                                      child:  Text(
+                                  child: Center(
+                                      child: Text(
                                           'Historical data is unavailable for this coin and period.',
                                           textAlign: TextAlign.center)))
                             else ...[
                               SizedBox(
                                   height: 210,
-                                  child: _InteractivePriceChart(
-                                      points: chartData)),
+                                  child:
+                                      InteractivePriceChart(points: chartData)),
                               const SizedBox(height: 8),
                               Row(
                                   mainAxisAlignment:
@@ -209,62 +207,6 @@ class CoinDetailsScreen extends ConsumerWidget {
         ChartPeriod.quarter => '90D',
         ChartPeriod.year => '1Y'
       };
-}
-
-class _InteractivePriceChart extends StatelessWidget {
-  const _InteractivePriceChart({required this.points});
-  final List<PriceHistoryPoint> points;
-
-  @override
-  Widget build(BuildContext context) {
-    final first = points.first.price, last = points.last.price;
-    final color =
-        last >= first ? const Color(0xFF41D6A3) : const Color(0xFFFF687D);
-    final values = points.map((p) => p.price);
-    final low = values.reduce((a, b) => a < b ? a : b);
-    final high = values.reduce((a, b) => a > b ? a : b);
-    final padding =
-        ((high - low) * .18).clamp(high * .008, double.infinity).toDouble();
-    final maxX = points.length > 1 ? (points.length - 1).toDouble() : 1.0;
-    return LineChart(LineChartData(
-      minX: 0,
-      maxX: maxX,
-      minY: (low - padding).clamp(0, double.infinity).toDouble(),
-      maxY: high + padding,
-      titlesData: const FlTitlesData(show: false),
-      borderData: FlBorderData(show: false),
-      gridData: const FlGridData(show: true, drawVerticalLine: false),
-      lineBarsData: [
-        LineChartBarData(
-          spots: [
-            for (var i = 0; i < points.length; i++)
-              FlSpot(i.toDouble(), points[i].price)
-          ],
-          isCurved: false,
-          color: color,
-          barWidth: 2.5,
-          dotData: FlDotData(show: points.length < 40),
-          belowBarData: BarAreaData(show: true, color: color.withOpacity(.10)),
-        )
-      ],
-      lineTouchData: LineTouchData(
-          handleBuiltInTouches: true,
-          touchTooltipData: LineTouchTooltipData(
-              getTooltipItems: (spots) => spots.map((spot) {
-                    final index =
-                        spot.x.round().clamp(0, points.length - 1).toInt();
-                    final point = points[index];
-                    final label = DateFormat(
-                            points.length < 36 ? 'MMM d, HH:mm' : 'MMM d, y')
-                        .format(point.timestamp.toLocal());
-                    return LineTooltipItem(
-                        '${formatPrice(point.price)}\n$label',
-                        TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontWeight: FontWeight.w700));
-                  }).toList())),
-    ));
-  }
 }
 
 class _EndpointLabel extends StatelessWidget {
