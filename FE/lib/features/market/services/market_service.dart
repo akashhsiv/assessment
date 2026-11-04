@@ -3,6 +3,7 @@ import '../../../core/network/dio_client.dart';
 import '../models/coin_model.dart';
 import '../models/market_model.dart';
 import '../models/pagination_model.dart';
+import '../models/price_history_model.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class TickerPage {
@@ -40,6 +41,32 @@ class MarketService {
       if (parsed.isNotEmpty) rows = parsed;
     }
     return MarketData(stats: MarketStats.fromApi(raw, rows), source: source);
+  }
+
+  Future<PriceHistoryResult> fetchPriceHistory(
+      {required String coinId, required String period}) async {
+    final response = await _dio.get<dynamic>(
+      '/api/market/tickers/${Uri.encodeComponent(coinId)}/historical',
+      queryParameters: {'period': period},
+    );
+    final body = _asMap(response.data);
+    if (body['success'] == false || body['source'] == 'unavailable') {
+      throw StateError(body['message']?.toString() ??
+          'Historical prices are temporarily unavailable.');
+    }
+    final raw = body['data'];
+    if (raw is! List) {
+      throw const FormatException(
+          'The historical-price response was not a list.');
+    }
+    final points = raw
+        .whereType<Map>()
+        .map((item) =>
+            PriceHistoryPoint.fromJson(Map<String, dynamic>.from(item)))
+        .toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    return PriceHistoryResult(
+        points: points, source: body['source']?.toString() ?? 'live');
   }
 
   Future<TickerPage> fetchTickers(

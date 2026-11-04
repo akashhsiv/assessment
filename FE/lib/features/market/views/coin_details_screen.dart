@@ -1,10 +1,12 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/mock_data_notice.dart';
 import '../../../core/widgets/theme_toggle_button.dart';
 import '../models/coin_model.dart';
+import '../models/price_history_model.dart';
 import '../viewmodels/coin_details_viewmodel.dart';
 import '../viewmodels/market_viewmodel.dart';
 import '../widgets/price_change_indicator.dart';
@@ -14,7 +16,9 @@ class CoinDetailsScreen extends ConsumerWidget {
   final CoinModel coin;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final period = ref.watch(coinDetailsViewModelProvider(coin));
+    final chartState = ref.watch(coinDetailsViewModelProvider(coin));
+    final period = chartState.period;
+    final chartData = chartState.points;
     final isMock =
         ref.watch(marketViewModelProvider.select((s) => s.source == 'mock'));
     final periods = ChartPeriod.values;
@@ -85,38 +89,88 @@ class CoinDetailsScreen extends ConsumerWidget {
               Card(
                   child: Padding(
                       padding: const EdgeInsets.all(14),
-                      child: Column(children: [
-                        Wrap(
-                            spacing: 5,
-                            children: List.generate(
-                                periods.length,
-                                (i) => ChoiceChip(
-                                    label: Text(_periodLabel(periods[i])),
-                                    selected: period == periods[i],
-                                    onSelected: (_) => ref
-                                        .read(coinDetailsViewModelProvider(coin)
-                                            .notifier)
-                                        .selectPeriod(periods[i])))),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                            height: 170,
-                            child: _UnavailableChart(
-                                points: ref
-                                    .read(coinDetailsViewModelProvider(coin)
-                                        .notifier)
-                                    .historicalPoints)),
-                        const SizedBox(height: 2),
-                        Text(
-                            'Historical prices are not available from the current backend.',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant)),
-                      ]))),
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(
+                                spacing: 5,
+                                children: List.generate(periods.length, (i) {
+                                  final p = periods[i];
+                                  return ChoiceChip(
+                                      label: Text(_periodLabel(p)),
+                                      selected: period == p,
+                                      onSelected: (_) => ref
+                                          .read(
+                                              coinDetailsViewModelProvider(coin)
+                                                  .notifier)
+                                          .selectPeriod(p));
+                                })),
+                            const SizedBox(height: 12),
+                            if (chartState.loading)
+                              const SizedBox(
+                                  height: 190,
+                                  child: Center(
+                                      child: CircularProgressIndicator()))
+                            else if (chartData.isEmpty)
+                              const SizedBox(
+                                  height: 190,
+                                  child:  Center(
+                                      child:  Text(
+                                          'Historical data is unavailable for this coin and period.',
+                                          textAlign: TextAlign.center)))
+                            else ...[
+                              SizedBox(
+                                  height: 210,
+                                  child: _InteractivePriceChart(
+                                      points: chartData)),
+                              const SizedBox(height: 8),
+                              Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    _EndpointLabel(
+                                        label: chartState.source == 'summary'
+                                            ? 'Start (derived)'
+                                            : 'Period start',
+                                        value:
+                                            formatPrice(chartData.first.price)),
+                                    if (chartState.changePercent != null)
+                                      PriceChangeIndicator(
+                                          value: chartState.changePercent),
+                                    _EndpointLabel(
+                                        label: 'Latest',
+                                        value:
+                                            formatPrice(chartData.last.price),
+                                        alignEnd: true),
+                                  ]),
+                            ],
+                            const SizedBox(height: 10),
+                            Text(
+                                chartState.source == 'live'
+                                    ? 'Historical price points from the backend. Touch the chart to inspect a point.'
+                                    : chartState.source == 'summary'
+                                        ? 'Showing the API-reported period return as two endpoints. Deploy the backend history route for a full price series.'
+                                        : 'No historical price data was returned. Check the connection or try another period.',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant)),
+                            if (!chartState.loading)
+                              Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton.icon(
+                                      onPressed: ref
+                                          .read(
+                                              coinDetailsViewModelProvider(coin)
+                                                  .notifier)
+                                          .refresh,
+                                      icon: const Icon(Icons.refresh_rounded,
+                                          size: 16),
+                                      label: const Text('Refresh chart'))),
+                          ]))),
               const SizedBox(height: 22),
               Text('Market data',
                   style: Theme.of(context)
@@ -157,28 +211,82 @@ class CoinDetailsScreen extends ConsumerWidget {
       };
 }
 
-class _UnavailableChart extends StatelessWidget {
-  const _UnavailableChart({required this.points});
-  final List<(double, double)> points;
+class _InteractivePriceChart extends StatelessWidget {
+  const _InteractivePriceChart({required this.points});
+  final List<PriceHistoryPoint> points;
+
   @override
   Widget build(BuildContext context) {
-    if (points.isEmpty) {
-      return Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.show_chart_rounded,
-            size: 42,
-            color: Theme.of(context)
-                .colorScheme
-                .onSurfaceVariant
-                .withValues(alpha: .6)),
-        const SizedBox(height: 8),
-        const Text('Chart data unavailable'),
-      ]));
-    }
-    return LineChart(LineChartData(lineBarsData: [
-      LineChartBarData(spots: points.map((e) => FlSpot(e.$1, e.$2)).toList())
-    ]));
+    final first = points.first.price, last = points.last.price;
+    final color =
+        last >= first ? const Color(0xFF41D6A3) : const Color(0xFFFF687D);
+    final values = points.map((p) => p.price);
+    final low = values.reduce((a, b) => a < b ? a : b);
+    final high = values.reduce((a, b) => a > b ? a : b);
+    final padding =
+        ((high - low) * .18).clamp(high * .008, double.infinity).toDouble();
+    final maxX = points.length > 1 ? (points.length - 1).toDouble() : 1.0;
+    return LineChart(LineChartData(
+      minX: 0,
+      maxX: maxX,
+      minY: (low - padding).clamp(0, double.infinity).toDouble(),
+      maxY: high + padding,
+      titlesData: const FlTitlesData(show: false),
+      borderData: FlBorderData(show: false),
+      gridData: const FlGridData(show: true, drawVerticalLine: false),
+      lineBarsData: [
+        LineChartBarData(
+          spots: [
+            for (var i = 0; i < points.length; i++)
+              FlSpot(i.toDouble(), points[i].price)
+          ],
+          isCurved: false,
+          color: color,
+          barWidth: 2.5,
+          dotData: FlDotData(show: points.length < 40),
+          belowBarData: BarAreaData(show: true, color: color.withOpacity(.10)),
+        )
+      ],
+      lineTouchData: LineTouchData(
+          handleBuiltInTouches: true,
+          touchTooltipData: LineTouchTooltipData(
+              getTooltipItems: (spots) => spots.map((spot) {
+                    final index =
+                        spot.x.round().clamp(0, points.length - 1).toInt();
+                    final point = points[index];
+                    final label = DateFormat(
+                            points.length < 36 ? 'MMM d, HH:mm' : 'MMM d, y')
+                        .format(point.timestamp.toLocal());
+                    return LineTooltipItem(
+                        '${formatPrice(point.price)}\n$label',
+                        TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.w700));
+                  }).toList())),
+    ));
   }
+}
+
+class _EndpointLabel extends StatelessWidget {
+  const _EndpointLabel(
+      {required this.label, required this.value, this.alignEnd = false});
+  final String label, value;
+  final bool alignEnd;
+  @override
+  Widget build(BuildContext context) => Column(
+          crossAxisAlignment:
+              alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            const SizedBox(height: 3),
+            Text(value,
+                style: Theme.of(context)
+                    .textTheme
+                    .labelLarge
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+          ]);
 }
 
 class _DataRow extends StatelessWidget {
