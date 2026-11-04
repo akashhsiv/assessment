@@ -6,7 +6,7 @@ from services.coin_service import (
     get_ticker_page,
 )
 from services.mock_data import get_mock_global_market, get_mock_tickers
-
+import re
 app = FastAPI(title="Crypto Research API")
 
 

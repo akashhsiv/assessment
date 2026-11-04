@@ -103,7 +103,13 @@ async def get_ticker_history(coin_id: str, period: str) -> list[dict[str, Any]]:
 
         end = datetime.now(timezone.utc)
         start = end - timedelta(days=periods[period])
-        interval = "1h" if period == "24h" else "1d"
+
+        if period == "24h":
+            start = end - timedelta(hours=23)
+            interval = "1h"
+        else:
+            start = end - timedelta(days=periods[period])
+            interval = "1d"
         params = {
             "start": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "end": end.strftime("%Y-%m-%dT%H:%M:%SZ"),
