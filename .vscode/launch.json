@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Flutter: Mobile (FE)",
+      "request": "launch",
+      "type": "dart",
+      "program": "${workspaceFolder}/FE/lib/main.dart",
+      "cwd": "${workspaceFolder}/FE",
+      "flutterMode": "debug"
+    }
+  ]
+}
